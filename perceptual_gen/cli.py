@@ -1,20 +1,37 @@
 import argparse
 import sys
+from pathlib import Path
 
-from perceptual_gen.config import ALL_LAYERS_TOKEN, SUPPORTED_LAYERS, GenerationConfig
+from perceptual_gen.config import (
+    ALL_LAYERS_TOKEN,
+    IMAGE_EXTENSIONS,
+    MODE_CONTENT,
+    MODE_TEXTURE,
+    SUPPORTED_LAYERS,
+    SUPPORTED_MODES,
+    GenerationConfig,
+)
 from perceptual_gen.pipeline import run_pipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
-    supported = ", ".join([*SUPPORTED_LAYERS, ALL_LAYERS_TOKEN])
+    content_layers = ", ".join([*SUPPORTED_LAYERS, ALL_LAYERS_TOKEN])
+    modes = ", ".join(SUPPORTED_MODES)
     parser = argparse.ArgumentParser(
-        description="Generate images by optimizing perceptual loss with VGG19 features.",
+        description=(
+            "Generate images via VGG19 optimization: content reconstruction "
+            "or texture synthesis."
+        ),
     )
-    parser.add_argument(
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
         "--input",
         "-i",
-        required=True,
-        help="Path to the source image.",
+        help="Path to a single source image.",
+    )
+    input_group.add_argument(
+        "--input-dir",
+        help="Directory with images for batch texture runs (2-3 textures).",
     )
     parser.add_argument(
         "--output-dir",
@@ -23,23 +40,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where results will be saved.",
     )
     parser.add_argument(
+        "--mode",
+        "-m",
+        choices=SUPPORTED_MODES,
+        default=MODE_CONTENT,
+        help=f"Generation mode. Supported: {modes}.",
+    )
+    parser.add_argument(
         "--layer",
         "-l",
-        default="block4_conv1",
-        help=f"VGG19 layer to optimize against. Supported: {supported}.",
+        default=None,
+        help=(
+            f"Content mode only: VGG19 layer or '{ALL_LAYERS_TOKEN}'. "
+            f"Supported: {content_layers}."
+        ),
     )
     parser.add_argument(
         "--steps",
         "-s",
         type=int,
-        default=500,
-        help="Number of optimization steps.",
+        default=None,
+        help="Optimization steps. Defaults: 500 (content), 2500 (texture).",
     )
     parser.add_argument(
         "--lr",
         type=float,
-        default=0.2,
-        help="Adam learning rate.",
+        default=None,
+        help="Adam learning rate. Defaults: 0.2 (content), 0.05 (texture).",
     )
     parser.add_argument(
         "--max-dim",
@@ -50,8 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tv-weight",
         type=float,
-        default=0.01,
-        help="Total variation regularization weight.",
+        default=None,
+        help="Total variation weight. Defaults: 0.01 (content), 10000 (texture).",
     )
     parser.add_argument(
         "--seed",
@@ -68,10 +95,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def config_from_args(args: argparse.Namespace) -> GenerationConfig:
-    return GenerationConfig(
-        input_path=args.input,
+def _collect_input_paths(args: argparse.Namespace) -> list[Path]:
+    if args.input:
+        return [Path(args.input)]
+
+    input_dir = Path(args.input_dir)
+    if not input_dir.is_dir():
+        raise FileNotFoundError(f"Input directory not found: {input_dir}")
+
+    images = sorted(
+        path
+        for path in input_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
+    if not images:
+        raise FileNotFoundError(
+            f"No images found in {input_dir}. Supported: {', '.join(sorted(IMAGE_EXTENSIONS))}"
+        )
+    return images
+
+
+def config_from_args(args: argparse.Namespace, input_path: Path) -> GenerationConfig:
+    return GenerationConfig.with_mode_defaults(
+        input_path=str(input_path),
         output_dir=args.output_dir,
+        mode=args.mode,
         layer=args.layer,
         steps=args.steps,
         learning_rate=args.lr,
@@ -85,17 +133,39 @@ def config_from_args(args: argparse.Namespace) -> GenerationConfig:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    config = config_from_args(args)
+
+    if args.input_dir and args.mode != MODE_TEXTURE:
+        print(
+            "Error: --input-dir is intended for texture batch runs. Use --mode texture.",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
-        results = run_pipeline(config)
+        input_paths = _collect_input_paths(args)
+    except FileNotFoundError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+
+    all_results: list[tuple[Path, list]] = []
+    try:
+        for index, input_path in enumerate(input_paths):
+            if len(input_paths) == 1:
+                output_dir = args.output_dir
+            else:
+                output_dir = str(Path(args.output_dir) / input_path.stem)
+
+            config = config_from_args(args, input_path)
+            results = run_pipeline(config)
+            all_results.append((input_path, results))
     except (FileNotFoundError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
-    for result in results:
-        print(
-            f"[{result.layer}] loss={result.final_loss:.4f}, "
-            f"time={result.elapsed_sec:.1f}s, result={result.result_path}"
-        )
+    for input_path, results in all_results:
+        for result in results:
+            print(
+                f"[{input_path.name}][{result.layer}] loss={result.final_loss:.4f}, "
+                f"time={result.elapsed_sec:.1f}s, result={result.result_path}"
+            )
     return 0
