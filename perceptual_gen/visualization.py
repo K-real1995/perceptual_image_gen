@@ -45,3 +45,34 @@ def save_comparison(
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+
+
+def save_style_transfer_comparison(
+    content: ImageTensor | np.ndarray,
+    style: ImageTensor | np.ndarray,
+    generated: ImageTensor | np.ndarray,
+    path: str | Path,
+) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    content_array = _to_numpy(content)
+    style_array = _to_numpy(style)
+    generated_array = _to_numpy(generated)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    axes[0].imshow(np.clip(content_array, 0.0, 1.0))
+    axes[0].set_title("Content")
+    axes[0].axis("off")
+
+    axes[1].imshow(np.clip(style_array, 0.0, 1.0))
+    axes[1].set_title("Style")
+    axes[1].axis("off")
+
+    axes[2].imshow(np.clip(generated_array, 0.0, 1.0))
+    axes[2].set_title("Result")
+    axes[2].axis("off")
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)

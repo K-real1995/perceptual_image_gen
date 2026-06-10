@@ -29,14 +29,16 @@ def optimize_image(
     seed: int,
     save_every: int = 0,
     snapshot_dir: str | Path | None = None,
+    init_image: tf.Tensor | None = None,
 ) -> tuple[tf.Variable, list[float]]:
-    tf.random.set_seed(seed)
-    np.random.seed(seed)
+    if init_image is None:
+        tf.random.set_seed(seed)
+        np.random.seed(seed)
+        initial_values = np.random.rand(*content_image.shape).astype(np.float32)
+    else:
+        initial_values = np.asarray(init_image.numpy(), dtype=np.float32)
 
-    image = tf.Variable(
-        np.random.rand(*content_image.shape).astype(np.float32),
-        trainable=True,
-    )
+    image = tf.Variable(initial_values, trainable=True)
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=learning_rate,
         beta_1=0.99,

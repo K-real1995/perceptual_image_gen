@@ -12,10 +12,16 @@ DEFAULT_STYLE_LAYERS = (
 )
 
 
-def gram_matrix(input_tensor: tf.Tensor) -> tf.Tensor:
+def gram_matrix(input_tensor: tf.Tensor, *, normalize_channels: bool = False) -> tf.Tensor:
     result = tf.linalg.einsum("bijc,bijd->bcd", input_tensor, input_tensor)
     input_shape = tf.shape(input_tensor)
-    num_locations = tf.cast(input_shape[1] * input_shape[2], tf.float32)
+    if normalize_channels:
+        num_locations = tf.cast(
+            input_shape[1] * input_shape[2] * input_shape[3],
+            tf.float32,
+        )
+    else:
+        num_locations = tf.cast(input_shape[1] * input_shape[2], tf.float32)
     return result / num_locations
 
 

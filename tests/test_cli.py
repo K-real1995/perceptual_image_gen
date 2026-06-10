@@ -45,3 +45,28 @@ def test_cli_texture_smoke_run(sample_image_path: Path, tmp_path: Path):
     assert (output_dir / "result.png").exists()
     assert (output_dir / "comparison.png").exists()
     assert (output_dir / "config.json").exists()
+
+
+def test_cli_style_transfer_smoke_run(sample_image_path: Path, tmp_path: Path):
+    output_dir = tmp_path / "smoke_style_transfer"
+    exit_code = main(
+        [
+            "--content",
+            str(sample_image_path),
+            "--style",
+            str(sample_image_path),
+            "--output-dir",
+            str(output_dir),
+            "--mode",
+            "style-transfer",
+            "--steps",
+            "2",
+            "--max-dim",
+            "128",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (output_dir / "result.png").exists()
+    assert (output_dir / "comparison.png").exists()
+    assert (output_dir / "config.json").exists()
