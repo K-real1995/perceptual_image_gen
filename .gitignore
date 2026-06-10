@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+outputs/
+*.log
+.DS_Store
+Thumbs.db
+.idea
+11_04_image_generation_perception_loss.iml
